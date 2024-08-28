@@ -63,10 +63,12 @@ const SequenceCounter = struct {
     }
 
     pub fn expected(output: u2, idx: usize) ?i16 {
+        const in1 = [_]i16{ 35, 260, 279, 98, 188, 0, 94, 79, 113, 224, 90 };
+        const in2 = [_]i16{ 1, 5, 5, 3, 3, 0, 1, 1, 2, 5, 2 };
         switch (output) {
             0 => return null,
-            1 => return ([_]i16{ 35, 260, 279, 98, 188, 0, 94, 79, 113, 224, 90 })[idx],
-            2 => return ([_]i16{ 1, 5, 5, 3, 3, 0, 1, 1, 2, 5, 2 })[idx],
+            1 => return if (idx < in1.len) in1[idx] else null,
+            2 => return if (idx < in2.len) in2[idx] else null,
             3 => return null,
         }
     }
@@ -132,80 +134,94 @@ pub fn main() !void {
         \\ MOV UP DOWN
     );
 
-    try Cursor.clear();
-    try tis100.print();
-    try Cursor.set(0, 0);
-    try Cursor.writer().writeAll("> ");
-
     const stdin = std.io.getStdIn().reader();
     var buf: [256]u8 = undefined;
 
     var cycles: usize = 0;
 
-    while (try stdin.readUntilDelimiterOrEof(buf[0..], '\n')) |user_input| {
-        if (std.mem.eql(u8, user_input, "q") or std.mem.eql(u8, user_input, "q\r")) break;
+    try Cursor.clear();
+
+    const no_interaction = true;
+    const render = !no_interaction or true;
+
+    while (true) {
+        const complete = Puzzle.expected(0, Puzzle.output_indices[0]) == null and Puzzle.expected(1, Puzzle.output_indices[1]) == null and Puzzle.expected(2, Puzzle.output_indices[2]) == null and Puzzle.expected(3, Puzzle.output_indices[3]) == null;
+
+        if (render or complete) {
+            try tis100.print();
+
+            comptime var col: u8 = 2 + 34 * 4;
+
+            inline for (0..4) |in| {
+                if (comptime Puzzle.get_input(in).len > 0) {
+                    try Cursor.set(0, col);
+                    try Cursor.writer().writeAll("In 2");
+                    try Cursor.set(2, col);
+
+                    for (0..@min(Puzzle.get_input(in).len, 48)) |i| {
+                        try Cursor.writer().print("{s}{d: >4}", .{ if (i == Puzzle.input_indices[in]) ">" else " ", Puzzle.get_input(in)[i] });
+                        try Cursor.down(1);
+                        try Cursor.left(5);
+                    }
+
+                    col += 10;
+                }
+            }
+
+            inline for (0..4) |in| {
+                if (comptime Puzzle.expected(in, 0) != null) {
+                    try Cursor.set(0, col);
+                    try Cursor.writer().writeAll("Out" ++ std.fmt.comptimePrint("{d}", .{in}));
+                    try Cursor.set(2, col);
+
+                    for (0..Puzzle.output_indices[in]) |i| {
+                        if (Puzzle.OutputData[in][i] == Puzzle.expected(in, i)) {
+                            try Cursor.writer().writeAll(Cursor.cmd ++ "32m");
+                        } else {
+                            try Cursor.writer().writeAll(Cursor.cmd ++ "31m");
+                        }
+                        try Cursor.writer().print("{s}{d: >4}", .{ if (i == Puzzle.output_indices[in]) ">" else " ", Puzzle.OutputData[in][i] });
+                        try Cursor.writer().writeAll(Cursor.cmd ++ "0m");
+                        try Cursor.down(1);
+                        try Cursor.left(5);
+                    }
+
+                    col += 10;
+
+                    try Cursor.set(0, col);
+                    try Cursor.writer().writeAll("Expected");
+                    try Cursor.set(2, col);
+
+                    for (0..@min(48, Puzzle.output_indices[in])) |i| {
+                        try Cursor.writer().print("{s}{d: >4}", .{ if (i == Puzzle.output_indices[in]) ">" else " ", Puzzle.expected(in, i) orelse -1000 });
+                        try Cursor.down(1);
+                        try Cursor.left(5);
+                    }
+
+                    col += 10;
+                }
+            }
+
+            try Cursor.set(1, col);
+            try Cursor.writer().print("Cycles: {d: >4}", .{cycles});
+            try Cursor.set(0, 0);
+            try Cursor.writer().writeAll("> ");
+        }
+
+        if (complete) {
+            break;
+        }
+
+        if (!no_interaction) {
+            const cin = try stdin.readUntilDelimiterOrEof(buf[0..], '\n');
+            if (cin) |user_input| {
+                if (std.mem.eql(u8, user_input, "q") or std.mem.eql(u8, user_input, "q\r")) break;
+            }
+        }
 
         tis100.tick();
         cycles += 1;
-        try tis100.print();
-
-        comptime var col: u8 = 2 + 34 * 4;
-
-        inline for (0..4) |in| {
-            if (comptime Puzzle.get_input(in).len > 0) {
-                try Cursor.set(0, col);
-                try Cursor.writer().writeAll("In 2");
-                try Cursor.set(2, col);
-
-                for (0..@min(Puzzle.get_input(in).len, 32)) |i| {
-                    try Cursor.writer().print("{s}{d: >4}", .{ if (i == Puzzle.input_indices[in]) ">" else " ", Puzzle.get_input(in)[i] });
-                    try Cursor.down(1);
-                    try Cursor.left(5);
-                }
-
-                col += 10;
-            }
-        }
-
-        inline for (0..4) |in| {
-            if (comptime Puzzle.expected(in, 0) != null) {
-                try Cursor.set(0, col);
-                try Cursor.writer().writeAll("Out" ++ std.fmt.comptimePrint("{d}", .{in}));
-                try Cursor.set(2, col);
-
-                for (0..Puzzle.output_indices[in]) |i| {
-                    if (Puzzle.OutputData[in][i] == Puzzle.expected(in, i)) {
-                        try Cursor.writer().writeAll(Cursor.cmd ++ "32m");
-                    } else {
-                        try Cursor.writer().writeAll(Cursor.cmd ++ "31m");
-                    }
-                    try Cursor.writer().print("{s}{d: >4}", .{ if (i == Puzzle.output_indices[in]) ">" else " ", Puzzle.OutputData[in][i] });
-                    try Cursor.writer().writeAll(Cursor.cmd ++ "0m");
-                    try Cursor.down(1);
-                    try Cursor.left(5);
-                }
-
-                col += 10;
-
-                try Cursor.set(0, col);
-                try Cursor.writer().writeAll("Expected");
-                try Cursor.set(2, col);
-
-                for (0..@min(32, Puzzle.output_indices[in])) |i| {
-                    try Cursor.writer().print("{s}{d: >4}", .{ if (i == Puzzle.output_indices[in]) ">" else " ", Puzzle.expected(in, i) orelse -1000 });
-                    try Cursor.down(1);
-                    try Cursor.left(5);
-                }
-
-                col += 10;
-            }
-        }
-
-        try Cursor.set(1, col);
-        try Cursor.writer().print("Cycles: {d: >4}", .{cycles});
-        try Cursor.set(0, 0);
-        try Cursor.writer().writeAll("> ");
     }
 
-    try Cursor.set(0, 0);
+    try Cursor.set(2 + 19 * 3, 0);
 }
