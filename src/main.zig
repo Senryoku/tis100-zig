@@ -86,31 +86,35 @@ pub fn main() !void {
     tis100.outputs[2] = &Puzzle.output_2;
     tis100.outputs[3] = &Puzzle.output_3;
 
-    tis100.nodes[0][0].append(.{ .MOV = .{ .src = .{ .Register = .UP }, .dst = .DOWN } });
+    try tis100.nodes[0][0].set("MOV UP DOWN");
+    try tis100.nodes[0][1].set("MOV UP DOWN");
+    try tis100.nodes[0][2].set("MOV UP RIGHT");
 
-    tis100.nodes[0][1].append(.{ .MOV = .{ .src = .{ .Register = .UP }, .dst = .DOWN } });
+    try tis100.nodes[1][2].set(
+        \\ MOV LEFT ACC 
+        \\ MOV ACC RIGHT
+        \\ JGZ 5        
+        \\ MOV 0 DOWN   
+        \\ JMP 0        
+        \\ MOV 1 DOWN   
+    );
 
-    tis100.nodes[0][2].append(.{ .MOV = .{ .src = .{ .Register = .UP }, .dst = .RIGHT } });
+    try tis100.nodes[2][2].set(
+        \\ MOV LEFT ACC 
+        \\ MOV ACC RIGHT
+        \\ JEZ 5        
+        \\ MOV 0 DOWN   
+        \\ JMP 0        
+        \\ MOV 1 DOWN   
+    );
 
-    tis100.nodes[1][2].append(.{ .MOV = .{ .src = .{ .Register = .LEFT }, .dst = .ACC } });
-    tis100.nodes[1][2].append(.{ .MOV = .{ .src = .{ .Register = .ACC }, .dst = .RIGHT } });
-    tis100.nodes[1][2].append(.{ .JGZ = .{ .dst = 5 } });
-    tis100.nodes[1][2].append(.{ .MOV = .{ .src = .{ .Immediate = 0 }, .dst = .DOWN } });
-    tis100.nodes[1][2].append(.{ .JMP = .{ .dst = 0 } });
-    tis100.nodes[1][2].append(.{ .MOV = .{ .src = .{ .Immediate = 1 }, .dst = .DOWN } });
-
-    tis100.nodes[2][2].append(.{ .MOV = .{ .src = .{ .Register = .LEFT }, .dst = .ACC } });
-    tis100.nodes[2][2].append(.{ .MOV = .{ .src = .{ .Register = .ACC }, .dst = .RIGHT } });
-    tis100.nodes[2][2].append(.{ .JEZ = .{ .dst = 5 } });
-    tis100.nodes[2][2].append(.{ .MOV = .{ .src = .{ .Immediate = 0 }, .dst = .DOWN } });
-    tis100.nodes[2][2].append(.{ .JMP = .{ .dst = 0 } });
-    tis100.nodes[2][2].append(.{ .MOV = .{ .src = .{ .Immediate = 1 }, .dst = .DOWN } });
-
-    tis100.nodes[3][2].append(.{ .MOV = .{ .src = .{ .Register = .LEFT }, .dst = .ACC } });
-    tis100.nodes[3][2].append(.{ .JLZ = .{ .dst = 4 } });
-    tis100.nodes[3][2].append(.{ .MOV = .{ .src = .{ .Immediate = 0 }, .dst = .DOWN } });
-    tis100.nodes[3][2].append(.{ .JMP = .{ .dst = 0 } });
-    tis100.nodes[3][2].append(.{ .MOV = .{ .src = .{ .Immediate = 1 }, .dst = .DOWN } });
+    try tis100.nodes[3][2].set(
+        \\ MOV LEFT ACC 
+        \\ JLZ 4        
+        \\ MOV 0 DOWN   
+        \\ JMP 0        
+        \\ MOV 1 DOWN   
+    );
 
     try tis100.print();
 

@@ -44,10 +44,10 @@ pub const Operand = union(OperandType) {
         _: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
-        switch (instr) {
-            .Register => |reg| try writer.print("{s}", .{@tagName(reg)}),
-            .Immediate => |imm| try writer.print("{d}", .{imm}),
-        }
+        try switch (instr) {
+            .Register => |reg| writer.print("{s}", .{@tagName(reg)}),
+            .Immediate => |imm| writer.print("{d}", .{imm}),
+        };
     }
 };
 
@@ -72,39 +72,21 @@ pub const Instruction = union(Opcode) {
         _: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
-        switch (instr) {
-            .NOP => try writer.writeAll("NOP"),
-            .MOV => |mov| {
-                try writer.print("MOV {any} {s}", .{ mov.src, @tagName(mov.dst) });
-            },
-            .SWP => try writer.writeAll("SWP"),
-            .SAV => try writer.writeAll("SAV"),
-            .ADD => |add| {
-                try writer.print("ADD {any}", .{add.src});
-            },
-            .SUB => |sub| {
-                try writer.print("SUB {any}", .{sub.src});
-            },
-            .NEG => try writer.writeAll("NEG"),
-            .JMP => |jmp| {
-                try writer.print("JMP {d}", .{jmp.dst});
-            },
-            .JEZ => |jez| {
-                try writer.print("JEZ {d}", .{jez.dst});
-            },
-            .JNZ => |jnz| {
-                try writer.print("JNZ {d}", .{jnz.dst});
-            },
-            .JGZ => |jgz| {
-                try writer.print("JGZ {d}", .{jgz.dst});
-            },
-            .JLZ => |jlz| {
-                try writer.print("JLZ {d}", .{jlz.dst});
-            },
-            .JRO => |jro| {
-                try writer.print("JRO {any}", .{jro.src});
-            },
-        }
+        try switch (instr) {
+            .NOP => writer.writeAll("NOP"),
+            .MOV => |mov| writer.print("MOV {any} {s}", .{ mov.src, @tagName(mov.dst) }),
+            .SWP => writer.writeAll("SWP"),
+            .SAV => writer.writeAll("SAV"),
+            .ADD => |add| writer.print("ADD {any}", .{add.src}),
+            .SUB => |sub| writer.print("SUB {any}", .{sub.src}),
+            .NEG => writer.writeAll("NEG"),
+            .JMP => |jmp| writer.print("JMP {d}", .{jmp.dst}),
+            .JEZ => |jez| writer.print("JEZ {d}", .{jez.dst}),
+            .JNZ => |jnz| writer.print("JNZ {d}", .{jnz.dst}),
+            .JGZ => |jgz| writer.print("JGZ {d}", .{jgz.dst}),
+            .JLZ => |jlz| writer.print("JLZ {d}", .{jlz.dst}),
+            .JRO => |jro| writer.print("JRO {any}", .{jro.src}),
+        };
     }
 };
 
@@ -124,6 +106,12 @@ pub const Node = struct {
     pub fn append(self: *@This(), instr: Instruction) void {
         self.instructions[self.instr_count] = instr;
         self.instr_count += 1;
+    }
+
+    pub fn set(self: *@This(), source: []const u8) !void {
+        const t = try parse(source);
+        self.instructions = t.instructions;
+        self.instr_count = t.instr_count;
     }
 
     inline fn read_port(self: *@This(), comptime reg: Register) ?i16 {
@@ -244,9 +232,7 @@ pub const TIS100 = struct {
                                         node.pc += 1;
                                     },
                                     .UP, .DOWN, .LEFT, .RIGHT => |reg| node.next_ports[reg.idx()] = val,
-                                    .NIL => {
-                                        node.pc += 1;
-                                    },
+                                    .NIL => node.pc += 1,
                                     else => @panic("Unimplemented destination"),
                                 }
                             }
@@ -336,18 +322,10 @@ pub const TIS100 = struct {
                 .RIGHT => return if (i >= self.nodes.len - 1) null else self.nodes[i + 1][j].left(),
                 .LAST => return self.get(i, j, .{ .Register = self.nodes[i][j].last_port orelse .NIL }),
                 .ANY => {
-                    if (self.get(i, j, .{ .Register = .LEFT })) |val| {
-                        return val;
-                    }
-                    if (self.get(i, j, .{ .Register = .RIGHT })) |val| {
-                        return val;
-                    }
-                    if (self.get(i, j, .{ .Register = .UP })) |val| {
-                        return val;
-                    }
-                    if (self.get(i, j, .{ .Register = .DOWN })) |val| {
-                        return val;
-                    }
+                    if (self.get(i, j, .{ .Register = .LEFT })) |val| return val;
+                    if (self.get(i, j, .{ .Register = .RIGHT })) |val| return val;
+                    if (self.get(i, j, .{ .Register = .UP })) |val| return val;
+                    if (self.get(i, j, .{ .Register = .DOWN })) |val| return val;
                     return null;
                 },
             },
@@ -368,6 +346,96 @@ pub const TIS100 = struct {
         try Cursor.set(0, 0);
     }
 };
+
+fn trim_start(input: []const u8) []const u8 {
+    var start: usize = 0;
+    while (start < input.len and input[start] == ' ') start += 1;
+    return input[start..];
+}
+
+fn next_operand(line: []const u8) []const u8 {
+    const trimmed = trim_start(line);
+    return trimmed[0 .. std.mem.indexOf(u8, trimmed, " ") orelse trimmed.len];
+}
+
+fn parse_register(op: []const u8) !?Register {
+    if (std.mem.eql(u8, op, "NIL")) return .NIL;
+    if (std.mem.eql(u8, op, "ACC")) return .ACC;
+    if (std.mem.eql(u8, op, "UP")) return .UP;
+    if (std.mem.eql(u8, op, "DOWN")) return .DOWN;
+    if (std.mem.eql(u8, op, "LEFT")) return .LEFT;
+    if (std.mem.eql(u8, op, "RIGHT")) return .RIGHT;
+    if (std.mem.eql(u8, op, "LAST")) return .LAST;
+    if (std.mem.eql(u8, op, "ANY")) return .ANY;
+    return null;
+}
+
+fn parse_operand(op: []const u8) !Operand {
+    if (try parse_register(op)) |reg| return .{ .Register = reg };
+    return .{ .Immediate = try std.fmt.parseInt(i16, op, 10) };
+}
+
+pub fn parse(txt: []const u8) !struct { instructions: [15]Instruction, instr_count: u4 } {
+    var lines = std.mem.splitSequence(u8, txt, "\n");
+
+    var instructions: [15]Instruction = .{.NOP} ** 15;
+    var idx: usize = 0;
+
+    while (lines.next()) |line| {
+        var l = trim_start(line);
+        if (l.len < 3) return error.InvalidInstruction;
+        const op = l[0..3];
+        if (std.mem.eql(u8, op, "MOV")) {
+            const rest = trim_start(l[3..]);
+            const src = next_operand(rest);
+            const dst = next_operand(rest[src.len..]);
+            const dst_reg = try parse_register(dst);
+            if (dst_reg == null) return error.InvalidDestinationRegister;
+            instructions[idx] = .{ .MOV = .{ .src = try parse_operand(src), .dst = dst_reg.? } };
+            idx += 1;
+        } else if (std.mem.eql(u8, op, "SWP")) {
+            instructions[idx] = .SWP;
+            idx += 1;
+        } else if (std.mem.eql(u8, op, "SAV")) {
+            instructions[idx] = .SAV;
+            idx += 1;
+        } else if (std.mem.eql(u8, op, "NEG")) {
+            instructions[idx] = .NEG;
+            idx += 1;
+        } else if (std.mem.eql(u8, op, "ADD")) {
+            instructions[idx] = .{ .ADD = .{ .src = try parse_operand(next_operand(l[3..])) } };
+            idx += 1;
+        } else if (std.mem.eql(u8, op, "SUB")) {
+            instructions[idx] = .{ .SUB = .{ .src = try parse_operand(next_operand(l[3..])) } };
+            idx += 1;
+        } else if (std.mem.eql(u8, op, "JMP")) {
+            instructions[idx] = .{ .JMP = .{ .dst = try std.fmt.parseInt(u4, next_operand(l[3..]), 10) } };
+            idx += 1;
+        } else if (std.mem.eql(u8, op, "JEZ")) {
+            instructions[idx] = .{ .JEZ = .{ .dst = try std.fmt.parseInt(u4, next_operand(l[3..]), 10) } };
+            idx += 1;
+        } else if (std.mem.eql(u8, op, "JNZ")) {
+            instructions[idx] = .{ .JNZ = .{ .dst = try std.fmt.parseInt(u4, next_operand(l[3..]), 10) } };
+            idx += 1;
+        } else if (std.mem.eql(u8, op, "JGZ")) {
+            instructions[idx] = .{ .JGZ = .{ .dst = try std.fmt.parseInt(u4, next_operand(l[3..]), 10) } };
+            idx += 1;
+        } else if (std.mem.eql(u8, op, "JLZ")) {
+            instructions[idx] = .{ .JLZ = .{ .dst = try std.fmt.parseInt(u4, next_operand(l[3..]), 10) } };
+            idx += 1;
+        } else if (std.mem.eql(u8, op, "JRO")) {
+            instructions[idx] = .{ .JRO = .{ .src = try parse_operand(l[3..]) } };
+            idx += 1;
+        } else {
+            return error.InvalidInstruction;
+        }
+    }
+
+    return .{ .instructions = instructions, .instr_count = @truncate(idx) };
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// TESTS
 
 const TestInputData = [_]i16{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
 
@@ -515,21 +583,27 @@ test {
     tis100.outputs[2] = &DifferentialConverter.output_2;
     tis100.outputs[3] = &DifferentialConverter.output_3;
 
-    tis100.nodes[1][0].append(.{ .MOV = .{ .src = .{ .Register = .UP }, .dst = .RIGHT } });
+    try tis100.nodes[1][0].set("MOV UP RIGHT");
 
-    tis100.nodes[1][2].append(.{ .MOV = .{ .src = .{ .Register = .RIGHT }, .dst = .ACC } });
-    tis100.nodes[1][2].append(.NEG);
-    tis100.nodes[1][2].append(.{ .MOV = .{ .src = .{ .Register = .ACC }, .dst = .DOWN } });
+    try tis100.nodes[1][2].set(
+        \\ MOV RIGHT ACC
+        \\ NEG
+        \\ MOV ACC DOWN
+    );
 
-    tis100.nodes[2][0].append(.{ .MOV = .{ .src = .{ .Register = .UP }, .dst = .ACC } });
-    tis100.nodes[2][0].append(.{ .SUB = .{ .src = .{ .Register = .LEFT } } });
-    tis100.nodes[2][0].append(.{ .MOV = .{ .src = .{ .Register = .ACC }, .dst = .DOWN } });
+    try tis100.nodes[2][0].set(
+        \\ MOV UP ACC 
+        \\ SUB LEFT
+        \\ MOV ACC DOWN
+    );
 
-    tis100.nodes[2][1].append(.{ .MOV = .{ .src = .{ .Register = .UP }, .dst = .DOWN } });
+    try tis100.nodes[2][1].set("MOV UP DOWN");
 
-    tis100.nodes[2][2].append(.{ .MOV = .{ .src = .{ .Register = .UP }, .dst = .ACC } });
-    tis100.nodes[2][2].append(.{ .MOV = .{ .src = .{ .Register = .ACC }, .dst = .LEFT } });
-    tis100.nodes[2][2].append(.{ .MOV = .{ .src = .{ .Register = .ACC }, .dst = .DOWN } });
+    try tis100.nodes[2][2].set(
+        \\ MOV UP ACC
+        \\ MOV ACC LEFT
+        \\ MOV ACC DOWN
+    );
 
     for (0..3 * DifferentialConverter.Input0Data.len + 4) |_| {
         tis100.tick();
