@@ -312,25 +312,19 @@ pub const TIS100 = struct {
     }
 
     pub fn get(self: *@This(), i: usize, j: usize, operand: Operand) ?i16 {
-        switch (operand) {
+        return switch (operand) {
             .Register => |reg| switch (reg) {
-                .NIL => return 0,
-                .ACC => return self.nodes[i][j].acc,
-                .UP => return if (j == 0) (if (self.inputs[i] != null) self.inputs[i].?() else null) else self.nodes[i][j - 1].down(),
-                .DOWN => return if (j >= self.nodes[i].len - 1) null else self.nodes[i][j + 1].up(),
-                .LEFT => return if (i == 0) null else self.nodes[i - 1][j].right(),
-                .RIGHT => return if (i >= self.nodes.len - 1) null else self.nodes[i + 1][j].left(),
-                .LAST => return self.get(i, j, .{ .Register = self.nodes[i][j].last_port orelse .NIL }),
-                .ANY => {
-                    if (self.get(i, j, .{ .Register = .LEFT })) |val| return val;
-                    if (self.get(i, j, .{ .Register = .RIGHT })) |val| return val;
-                    if (self.get(i, j, .{ .Register = .UP })) |val| return val;
-                    if (self.get(i, j, .{ .Register = .DOWN })) |val| return val;
-                    return null;
-                },
+                .NIL => 0,
+                .ACC => self.nodes[i][j].acc,
+                .UP => if (j == 0) (if (self.inputs[i] != null) self.inputs[i].?() else null) else self.nodes[i][j - 1].down(),
+                .DOWN => if (j >= self.nodes[i].len - 1) null else self.nodes[i][j + 1].up(),
+                .LEFT => if (i == 0) null else self.nodes[i - 1][j].right(),
+                .RIGHT => if (i >= self.nodes.len - 1) null else self.nodes[i + 1][j].left(),
+                .LAST => self.get(i, j, .{ .Register = self.nodes[i][j].last_port orelse .NIL }),
+                .ANY => self.get(i, j, .{ .Register = .LEFT }) orelse self.get(i, j, .{ .Register = .RIGHT }) orelse self.get(i, j, .{ .Register = .UP }) orelse self.get(i, j, .{ .Register = .DOWN }) orelse null,
             },
-            .Immediate => |imm| return imm,
-        }
+            .Immediate => |imm| imm,
+        };
     }
 
     pub fn print(self: *const @This()) !void {
@@ -606,6 +600,126 @@ test {
     );
 
     for (0..3 * DifferentialConverter.Input0Data.len + 4) |_| {
+        tis100.tick();
+    }
+}
+
+const SignalComparator = struct {
+    const Input0Data = [_]i16{ 2, 1, 2, 0, -2, 1, 2, -2, -1, -2, 1, -2, 0, 2, 0, 1, 0, 2, -1, 0, -1, -1, -1, 0, 1, 1, -2, -2, -2, 2, -2, 0, 2, -1, 1, 2, 0, -1, -1 };
+    const Input1Data = [_]i16{};
+    const Input2Data = [_]i16{};
+    const Input3Data = [_]i16{};
+
+    var input_indices: [4]usize = .{0} ** 4;
+    var output_indices: [4]usize = .{0} ** 4;
+
+    inline fn get_input(idx: u2) []const i16 {
+        return switch (idx) {
+            0 => &Input0Data,
+            1 => &Input1Data,
+            2 => &Input2Data,
+            3 => &Input3Data,
+        };
+    }
+
+    pub fn input_0() ?i16 {
+        defer input_indices[0] += 1;
+        return if (input_indices[0] < get_input(0).len) get_input(0)[input_indices[0]] else null;
+    }
+
+    pub fn input_1() ?i16 {
+        defer input_indices[1] += 1;
+        return if (input_indices[1] < get_input(1).len) get_input(1)[input_indices[1]] else null;
+    }
+
+    pub fn input_2() ?i16 {
+        defer input_indices[2] += 1;
+        return if (input_indices[2] < get_input(2).len) get_input(2)[input_indices[2]] else null;
+    }
+
+    pub fn input_3() ?i16 {
+        defer input_indices[3] += 1;
+        return if (input_indices[3] < get_input(3).len) get_input(3)[input_indices[3]] else null;
+    }
+
+    pub fn output_0(val: i16) void {
+        std.testing.expect(val == expected(0, output_indices[0])) catch |err|
+            @panic(@errorName(err));
+        output_indices[0] += 1;
+    }
+
+    pub fn output_1(val: i16) void {
+        std.testing.expect(val == expected(1, output_indices[1])) catch |err|
+            @panic(@errorName(err));
+        output_indices[1] += 1;
+    }
+
+    pub fn output_2(val: i16) void {
+        std.testing.expect(val == expected(2, output_indices[2])) catch |err|
+            @panic(@errorName(err));
+        output_indices[2] += 1;
+    }
+
+    pub fn output_3(val: i16) void {
+        std.testing.expect(val == expected(3, output_indices[3])) catch |err|
+            @panic(@errorName(err));
+        output_indices[3] += 1;
+    }
+
+    pub fn expected(output: u2, idx: usize) ?i16 {
+        switch (output) {
+            0 => return null,
+            1 => return if (get_input(0)[idx] > 0) 1 else 0,
+            2 => return if (get_input(0)[idx] == 0) 1 else 0,
+            3 => return if (get_input(0)[idx] < 0) 1 else 0,
+        }
+    }
+};
+
+test {
+    var tis100: TIS100 = .{};
+
+    const Puzzle = SignalComparator;
+    tis100.inputs[0] = &Puzzle.input_0;
+    tis100.inputs[1] = &Puzzle.input_1;
+    tis100.inputs[2] = &Puzzle.input_2;
+    tis100.inputs[3] = &Puzzle.input_3;
+    tis100.outputs[0] = &Puzzle.output_0;
+    tis100.outputs[1] = &Puzzle.output_1;
+    tis100.outputs[2] = &Puzzle.output_2;
+    tis100.outputs[3] = &Puzzle.output_3;
+
+    try tis100.nodes[0][0].set("MOV UP DOWN");
+    try tis100.nodes[0][1].set("MOV UP DOWN");
+    try tis100.nodes[0][2].set("MOV UP RIGHT");
+
+    try tis100.nodes[1][2].set(
+        \\ MOV LEFT ACC 
+        \\ MOV ACC RIGHT
+        \\ JGZ 5        
+        \\ MOV 0 DOWN   
+        \\ JMP 0        
+        \\ MOV 1 DOWN   
+    );
+
+    try tis100.nodes[2][2].set(
+        \\ MOV LEFT ACC 
+        \\ MOV ACC RIGHT
+        \\ JEZ 5        
+        \\ MOV 0 DOWN   
+        \\ JMP 0        
+        \\ MOV 1 DOWN   
+    );
+
+    try tis100.nodes[3][2].set(
+        \\ MOV LEFT ACC 
+        \\ JLZ 4        
+        \\ MOV 0 DOWN   
+        \\ JMP 0        
+        \\ MOV 1 DOWN   
+    );
+
+    for (0..5 * Puzzle.Input0Data.len + 4) |_| {
         tis100.tick();
     }
 }

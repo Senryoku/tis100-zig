@@ -2,10 +2,10 @@ const std = @import("std");
 const Cursor = @import("cursor.zig");
 const tis = @import("tis.zig");
 
-const SignalComparator = struct {
-    const Input0Data = [_]i16{ 2, 1, 2, 0, -2, 1, 2, -2, -1, -2, 1, -2, 0, 2, 0, 1, 0, 2, -1, 0, -1, -1, -1, 0, 1, 1, -2, -2, -2, 2, -2, 0, 2, -1, 1, 2, 0, -1, -1 };
-    const Input1Data = [_]i16{};
-    const Input2Data = [_]i16{};
+const SequenceGenerator = struct {
+    const Input0Data = [_]i16{};
+    const Input1Data = [_]i16{ 46, 71, 66, 21, 79, 23, 62, 23, 36, 96, 12, 97, 47 };
+    const Input2Data = [_]i16{ 71, 29, 90, 67, 79, 84, 78, 27, 60, 45, 67, 42, 64 };
     const Input3Data = [_]i16{};
 
     var input_indices: [4]usize = .{0} ** 4;
@@ -65,9 +65,17 @@ const SignalComparator = struct {
     pub fn expected(output: u2, idx: usize) ?i16 {
         switch (output) {
             0 => return null,
-            1 => return if (get_input(0)[idx] > 0) 1 else 0,
-            2 => return if (get_input(0)[idx] == 0) 1 else 0,
-            3 => return if (get_input(0)[idx] < 0) 1 else 0,
+            1 => return null,
+            2 => {
+                const i = @divTrunc(idx, 3);
+                switch (@rem(idx, 3)) {
+                    0 => return @min(Input1Data[i], Input2Data[i]),
+                    1 => return @max(Input1Data[i], Input2Data[i]),
+                    2 => return 0,
+                    else => unreachable,
+                }
+            },
+            3 => return null,
         }
     }
 };
@@ -75,7 +83,7 @@ const SignalComparator = struct {
 pub fn main() !void {
     var tis100: tis.TIS100 = .{};
 
-    const Puzzle = SignalComparator;
+    const Puzzle = SequenceGenerator;
 
     tis100.inputs[0] = &Puzzle.input_0;
     tis100.inputs[1] = &Puzzle.input_1;
@@ -86,34 +94,37 @@ pub fn main() !void {
     tis100.outputs[2] = &Puzzle.output_2;
     tis100.outputs[3] = &Puzzle.output_3;
 
-    try tis100.nodes[0][0].set("MOV UP DOWN");
-    try tis100.nodes[0][1].set("MOV UP DOWN");
-    try tis100.nodes[0][2].set("MOV UP RIGHT");
+    try tis100.nodes[1][0].set(
+        \\ MOV UP DOWN
+    );
 
-    try tis100.nodes[1][2].set(
-        \\ MOV LEFT ACC 
+    try tis100.nodes[1][1].set(
+        \\ MOV UP ACC 
         \\ MOV ACC RIGHT
-        \\ JGZ 5        
-        \\ MOV 0 DOWN   
-        \\ JMP 0        
-        \\ MOV 1 DOWN   
+        \\ MOV ACC RIGHT
+    );
+
+    try tis100.nodes[2][0].set(
+        \\ MOV UP ACC 
+        \\ MOV ACC DOWN       
+        \\ MOV ACC DOWN 
+    );
+
+    try tis100.nodes[2][1].set(
+        \\ MOV UP ACC
+        \\ SUB LEFT
+        \\ JLZ 6
+        \\ MOV LEFT DOWN
+        \\ MOV UP DOWN
+        \\ JMP 0
+        \\ MOV UP DOWN
+        \\ MOV LEFT DOWN
     );
 
     try tis100.nodes[2][2].set(
-        \\ MOV LEFT ACC 
-        \\ MOV ACC RIGHT
-        \\ JEZ 5        
-        \\ MOV 0 DOWN   
-        \\ JMP 0        
-        \\ MOV 1 DOWN   
-    );
-
-    try tis100.nodes[3][2].set(
-        \\ MOV LEFT ACC 
-        \\ JLZ 4        
-        \\ MOV 0 DOWN   
-        \\ JMP 0        
-        \\ MOV 1 DOWN   
+        \\ MOV UP DOWN
+        \\ MOV UP DOWN
+        \\ MOV 0 DOWN
     );
 
     try tis100.print();
