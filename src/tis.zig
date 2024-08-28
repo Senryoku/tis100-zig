@@ -103,6 +103,8 @@ pub const Node = struct {
 
     next_ports: [4]?i16 = .{ null, null, null, null },
 
+    rendered: bool = false,
+
     pub fn append(self: *@This(), instr: Instruction) void {
         self.instructions[self.instr_count] = instr;
         self.instr_count += 1;
@@ -139,19 +141,24 @@ pub const Node = struct {
     }
 
     pub fn print(self: *const @This()) !void {
-        const stdout = std.io.getStdOut().writer();
+        if (self.instr_count == 0 and self.rendered) {
+            return;
+        }
 
-        try Cursor.save();
-        try stdout.writeAll(".------------------.-----------.");
-        try Cursor.down(1);
-        try Cursor.left(32);
-        for (0..self.instructions.len) |_| {
-            try stdout.writeAll("|                  |           |");
+        const stdout = std.io.getStdOut().writer();
+        if (!self.rendered) {
+            try Cursor.save();
+            try stdout.writeAll(".------------------.-----------.");
             try Cursor.down(1);
             try Cursor.left(32);
+            for (0..self.instructions.len) |_| {
+                try stdout.writeAll("|                  |           |");
+                try Cursor.down(1);
+                try Cursor.left(32);
+            }
+            try stdout.writeAll("'------------------'-----------'");
+            try Cursor.restore();
         }
-        try stdout.writeAll("'------------------'-----------'");
-        try Cursor.restore();
         try Cursor.down(1);
 
         try Cursor.save();
@@ -197,13 +204,20 @@ pub const Node = struct {
 
         for (0..self.instr_count) |i| {
             try Cursor.save();
-            try stdout.print("|{s}{s}" ++ Cursor.cmd ++ "0;0m", .{ if (i == self.pc) Cursor.cmd ++ "47;30m>" else " ", self.instructions[i] });
+            if (i == self.pc)
+                try stdout.writeAll(Cursor.cmd ++ "47;30m");
+            try Cursor.right(1);
+            try stdout.writeAll("                  ");
             try Cursor.restore();
-            try Cursor.right(18);
-            try stdout.writeAll(" |");
+            try Cursor.right(1);
+            if (i == self.pc)
+                try stdout.writeAll(Cursor.cmd ++ "47;30m");
+            try stdout.print(" {s}" ++ Cursor.cmd ++ "0;0m", .{self.instructions[i]});
             try Cursor.restore();
             try Cursor.down(1);
         }
+
+        @constCast(self).rendered = true;
     }
 };
 
@@ -328,8 +342,6 @@ pub const TIS100 = struct {
     }
 
     pub fn print(self: *const @This()) !void {
-        try Cursor.clear();
-
         inline for (0..4) |i| {
             inline for (0..3) |j| {
                 try Cursor.set(1 + 19 * j, 34 * i);
@@ -418,7 +430,10 @@ pub fn parse(txt: []const u8) !struct { instructions: [15]Instruction, instr_cou
             instructions[idx] = .{ .JLZ = .{ .dst = try std.fmt.parseInt(u4, next_operand(l[3..]), 10) } };
             idx += 1;
         } else if (std.mem.eql(u8, op, "JRO")) {
-            instructions[idx] = .{ .JRO = .{ .src = try parse_operand(l[3..]) } };
+            instructions[idx] = .{ .JRO = .{ .src = try parse_operand(next_operand(l[3..])) } };
+            idx += 1;
+        } else if (std.mem.eql(u8, op, "NOP")) {
+            instructions[idx] = .NOP;
             idx += 1;
         } else {
             return error.InvalidInstruction;
@@ -717,6 +732,135 @@ test {
         \\ MOV 0 DOWN   
         \\ JMP 0        
         \\ MOV 1 DOWN   
+    );
+
+    for (0..5 * Puzzle.Input0Data.len + 4) |_| {
+        tis100.tick();
+    }
+}
+
+const SequenceGenerator = struct {
+    const Input0Data = [_]i16{};
+    const Input1Data = [_]i16{ 46, 71, 66, 21, 79, 23, 62, 23, 36, 96, 12, 97, 47 };
+    const Input2Data = [_]i16{ 71, 29, 90, 67, 79, 84, 78, 27, 60, 45, 67, 42, 64 };
+    const Input3Data = [_]i16{};
+
+    var input_indices: [4]usize = .{0} ** 4;
+    var output_indices: [4]usize = .{0} ** 4;
+
+    var OutputData: [4][256]i16 = .{.{0} ** 256} ** 4;
+
+    inline fn get_input(idx: u2) []const i16 {
+        return switch (idx) {
+            0 => &Input0Data,
+            1 => &Input1Data,
+            2 => &Input2Data,
+            3 => &Input3Data,
+        };
+    }
+
+    pub fn input_0() ?i16 {
+        defer input_indices[0] += 1;
+        return if (input_indices[0] < get_input(0).len) get_input(0)[input_indices[0]] else null;
+    }
+
+    pub fn input_1() ?i16 {
+        defer input_indices[1] += 1;
+        return if (input_indices[1] < get_input(1).len) get_input(1)[input_indices[1]] else null;
+    }
+
+    pub fn input_2() ?i16 {
+        defer input_indices[2] += 1;
+        return if (input_indices[2] < get_input(2).len) get_input(2)[input_indices[2]] else null;
+    }
+
+    pub fn input_3() ?i16 {
+        defer input_indices[3] += 1;
+        return if (input_indices[3] < get_input(3).len) get_input(3)[input_indices[3]] else null;
+    }
+
+    pub fn output_0(val: i16) void {
+        OutputData[0][output_indices[0]] = val;
+        output_indices[0] += 1;
+    }
+
+    pub fn output_1(val: i16) void {
+        OutputData[1][output_indices[1]] = val;
+        output_indices[1] += 1;
+    }
+
+    pub fn output_2(val: i16) void {
+        OutputData[2][output_indices[2]] = val;
+        output_indices[2] += 1;
+    }
+
+    pub fn output_3(val: i16) void {
+        OutputData[3][output_indices[3]] = val;
+        output_indices[3] += 1;
+    }
+
+    pub fn expected(output: u2, idx: usize) ?i16 {
+        switch (output) {
+            0 => return null,
+            1 => return null,
+            2 => {
+                const i = @divTrunc(idx, 3);
+                switch (@rem(idx, 3)) {
+                    0 => return @min(Input1Data[i], Input2Data[i]),
+                    1 => return @max(Input1Data[i], Input2Data[i]),
+                    2 => return 0,
+                    else => unreachable,
+                }
+            },
+            3 => return null,
+        }
+    }
+};
+
+test {
+    var tis100: TIS100 = .{};
+
+    const Puzzle = SequenceGenerator;
+    tis100.inputs[0] = &Puzzle.input_0;
+    tis100.inputs[1] = &Puzzle.input_1;
+    tis100.inputs[2] = &Puzzle.input_2;
+    tis100.inputs[3] = &Puzzle.input_3;
+    tis100.outputs[0] = &Puzzle.output_0;
+    tis100.outputs[1] = &Puzzle.output_1;
+    tis100.outputs[2] = &Puzzle.output_2;
+    tis100.outputs[3] = &Puzzle.output_3;
+
+    try tis100.nodes[1][0].set(
+        \\ MOV UP DOWN
+    );
+
+    try tis100.nodes[1][1].set(
+        \\ MOV UP ACC 
+        \\ MOV ACC RIGHT
+        \\ MOV ACC RIGHT
+    );
+
+    try tis100.nodes[2][0].set(
+        \\ MOV UP ACC 
+        \\ MOV ACC DOWN       
+        \\ MOV ACC DOWN 
+    );
+
+    try tis100.nodes[2][1].set(
+        \\ MOV UP ACC
+        \\ SUB LEFT
+        \\ JLZ 6
+        \\ MOV LEFT DOWN
+        \\ MOV UP DOWN
+        \\ JMP 0
+        \\ MOV UP DOWN
+        \\ MOV LEFT DOWN
+    );
+
+    try tis100.nodes[2][2].set(
+        \\ MOV UP DOWN
+        \\ MOV UP DOWN
+        \\ MOV 0 DOWN
     );
 
     for (0..5 * Puzzle.Input0Data.len + 4) |_| {

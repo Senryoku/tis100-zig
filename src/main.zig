@@ -2,10 +2,10 @@ const std = @import("std");
 const Cursor = @import("cursor.zig");
 const tis = @import("tis.zig");
 
-const SequenceGenerator = struct {
+const SequenceCounter = struct {
     const Input0Data = [_]i16{};
-    const Input1Data = [_]i16{ 46, 71, 66, 21, 79, 23, 62, 23, 36, 96, 12, 97, 47 };
-    const Input2Data = [_]i16{ 71, 29, 90, 67, 79, 84, 78, 27, 60, 45, 67, 42, 64 };
+    const Input1Data = [_]i16{ 35, 0, 62, 51, 81, 54, 12, 0, 51, 63, 50, 67, 48, 0, 49, 23, 26, 0, 33, 79, 76, 0, 0, 94, 0, 79, 0, 98, 15, 0, 53, 35, 45, 12, 79, 0, 19, 71, 0 };
+    const Input2Data = [_]i16{};
     const Input3Data = [_]i16{};
 
     var input_indices: [4]usize = .{0} ** 4;
@@ -65,16 +65,8 @@ const SequenceGenerator = struct {
     pub fn expected(output: u2, idx: usize) ?i16 {
         switch (output) {
             0 => return null,
-            1 => return null,
-            2 => {
-                const i = @divTrunc(idx, 3);
-                switch (@rem(idx, 3)) {
-                    0 => return @min(Input1Data[i], Input2Data[i]),
-                    1 => return @max(Input1Data[i], Input2Data[i]),
-                    2 => return 0,
-                    else => unreachable,
-                }
-            },
+            1 => return ([_]i16{ 35, 260, 279, 98, 188, 0, 94, 79, 113, 224, 90 })[idx],
+            2 => return ([_]i16{ 1, 5, 5, 3, 3, 0, 1, 1, 2, 5, 2 })[idx],
             3 => return null,
         }
     }
@@ -83,7 +75,7 @@ const SequenceGenerator = struct {
 pub fn main() !void {
     var tis100: tis.TIS100 = .{};
 
-    const Puzzle = SequenceGenerator;
+    const Puzzle = SequenceCounter;
 
     tis100.inputs[0] = &Puzzle.input_0;
     tis100.inputs[1] = &Puzzle.input_1;
@@ -95,47 +87,66 @@ pub fn main() !void {
     tis100.outputs[3] = &Puzzle.output_3;
 
     try tis100.nodes[1][0].set(
-        \\ MOV UP DOWN
+        \\ MOV UP ACC
+        \\ MOV ACC RIGHT
+        \\ MOV ACC DOWN
     );
 
     try tis100.nodes[1][1].set(
-        \\ MOV UP ACC 
-        \\ MOV ACC RIGHT
-        \\ MOV ACC RIGHT
+        \\ MOV UP ACC
+        \\ JNZ 5
+        \\ MOV 0 DOWN
+        \\ MOV 1 DOWN
+        \\ JMP 0
+        \\ MOV ACC DOWN
+        \\ MOV 3 DOWN
+    );
+
+    try tis100.nodes[1][2].set(
+        \\ ADD UP 
+        \\ JRO UP       
+        \\ MOV ACC DOWN 
+        \\ MOV 0 ACC 
+        \\ NOP 
     );
 
     try tis100.nodes[2][0].set(
-        \\ MOV UP ACC 
-        \\ MOV ACC DOWN       
-        \\ MOV ACC DOWN 
+        \\ MOV LEFT ACC
+        \\ JNZ 5
+        \\ MOV 0 DOWN
+        \\ MOV 1 DOWN
+        \\ JMP 0
+        \\ MOV 1 DOWN
+        \\ MOV 3 DOWN
     );
 
     try tis100.nodes[2][1].set(
-        \\ MOV UP ACC
-        \\ SUB LEFT
-        \\ JLZ 6
-        \\ MOV LEFT DOWN
-        \\ MOV UP DOWN
-        \\ JMP 0
-        \\ MOV UP DOWN
-        \\ MOV LEFT DOWN
+        \\ ADD UP
+        \\ JRO UP
+        \\ MOV ACC DOWN
+        \\ MOV 0 ACC
+        \\ NOP
     );
 
     try tis100.nodes[2][2].set(
         \\ MOV UP DOWN
-        \\ MOV UP DOWN
-        \\ MOV 0 DOWN
     );
 
+    try Cursor.clear();
     try tis100.print();
+    try Cursor.set(0, 0);
+    try Cursor.writer().writeAll("> ");
 
     const stdin = std.io.getStdIn().reader();
     var buf: [256]u8 = undefined;
+
+    var cycles: usize = 0;
 
     while (try stdin.readUntilDelimiterOrEof(buf[0..], '\n')) |user_input| {
         if (std.mem.eql(u8, user_input, "q") or std.mem.eql(u8, user_input, "q\r")) break;
 
         tis100.tick();
+        cycles += 1;
         try tis100.print();
 
         comptime var col: u8 = 2 + 34 * 4;
@@ -190,7 +201,10 @@ pub fn main() !void {
             }
         }
 
+        try Cursor.set(1, col);
+        try Cursor.writer().print("Cycles: {d: >4}", .{cycles});
         try Cursor.set(0, 0);
+        try Cursor.writer().writeAll("> ");
     }
 
     try Cursor.set(0, 0);
