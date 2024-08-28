@@ -75,15 +75,15 @@ pub const Instruction = union(Opcode) {
         switch (instr) {
             .NOP => try writer.writeAll("NOP"),
             .MOV => |mov| {
-                try writer.print("MOV {} {s}", .{ mov.src, @tagName(mov.dst) });
+                try writer.print("MOV {any} {s}", .{ mov.src, @tagName(mov.dst) });
             },
             .SWP => try writer.writeAll("SWP"),
             .SAV => try writer.writeAll("SAV"),
             .ADD => |add| {
-                try writer.print("ADD {}", .{add.src});
+                try writer.print("ADD {any}", .{add.src});
             },
             .SUB => |sub| {
-                try writer.print("SUB {}", .{sub.src});
+                try writer.print("SUB {any}", .{sub.src});
             },
             .NEG => try writer.writeAll("NEG"),
             .JMP => |jmp| {
@@ -102,7 +102,7 @@ pub const Instruction = union(Opcode) {
                 try writer.print("JLZ {d}", .{jlz.dst});
             },
             .JRO => |jro| {
-                try writer.print("JRO {}", .{jro.src});
+                try writer.print("JRO {any}", .{jro.src});
             },
         }
     }
@@ -192,7 +192,7 @@ pub const Node = struct {
             try stdout.writeAll("   -");
         }
         if (self.ports[Register.RIGHT.idx()]) |port| {
-            try stdout.print("{d: <4}", .{port});
+            try stdout.print("{d: >4}", .{port});
         } else {
             try stdout.writeAll("   -");
         }
@@ -438,6 +438,100 @@ test {
     tis100.nodes[0][2].append(.{ .MOV = .{ .src = .{ .Register = .UP }, .dst = .DOWN } });
 
     for (0..3 * DoubleInputData.len + 4) |_| {
+        tis100.tick();
+    }
+}
+
+const DifferentialConverter = struct {
+    const Input0Data = [_]i16{};
+    const Input1Data = [_]i16{ 44, 78, 88, 95, 65, 63, 41, 26, 87, 75, 21, 21, 62, 43, 26, 45, 13, 26, 30, 33, 34, 24, 39, 55, 54, 52, 67, 18, 77, 41, 31, 68, 28, 19, 97, 76, 27, 55, 89 };
+    const Input2Data = [_]i16{ 93, 60, 92, 68, 56, 30, 90, 65, 94, 92, 62, 35, 63, 57, 45, 40, 81, 11, 35, 20, 85, 29, 86, 84, 36, 18, 33, 87, 87, 54, 82, 69, 31, 18, 79, 24, 34, 67, 74 };
+    const Input3Data = [_]i16{};
+
+    pub fn input_0() ?i16 {
+        const static = struct {
+            var idx: usize = 0;
+        };
+        defer static.idx += 1;
+        return if (static.idx < Input0Data.len) Input0Data[static.idx] else null;
+    }
+
+    pub fn input_1() ?i16 {
+        const static = struct {
+            var idx: usize = 0;
+        };
+        defer static.idx += 1;
+        return if (static.idx < Input1Data.len) Input1Data[static.idx] else null;
+    }
+
+    pub fn input_2() ?i16 {
+        const static = struct {
+            var idx: usize = 0;
+        };
+        defer static.idx += 1;
+        return if (static.idx < Input2Data.len) Input2Data[static.idx] else null;
+    }
+
+    pub fn input_3() ?i16 {
+        const static = struct {
+            var idx: usize = 0;
+        };
+        defer static.idx += 1;
+        return if (static.idx < Input3Data.len) Input3Data[static.idx] else null;
+    }
+
+    pub fn output_0(_: i16) void {}
+
+    pub fn output_1(val: i16) void {
+        const static = struct {
+            var idx: usize = 0;
+        };
+        std.testing.expect(val == Input1Data[static.idx] - Input2Data[static.idx]) catch |err|
+            @panic(@errorName(err));
+        static.idx += 1;
+    }
+
+    pub fn output_2(val: i16) void {
+        const static = struct {
+            var idx: usize = 0;
+        };
+        std.testing.expect(val == Input2Data[static.idx] - Input1Data[static.idx]) catch |err|
+            @panic(@errorName(err));
+        static.idx += 1;
+    }
+
+    pub fn output_3(_: i16) void {}
+};
+
+test {
+    var tis100: TIS100 = .{};
+
+    tis100.inputs[0] = &DifferentialConverter.input_0;
+    tis100.inputs[1] = &DifferentialConverter.input_1;
+    tis100.inputs[2] = &DifferentialConverter.input_2;
+    tis100.inputs[3] = &DifferentialConverter.input_3;
+    tis100.outputs[0] = &DifferentialConverter.output_0;
+    tis100.outputs[1] = &DifferentialConverter.output_1;
+    tis100.outputs[2] = &DifferentialConverter.output_2;
+    tis100.outputs[3] = &DifferentialConverter.output_3;
+
+    tis100.nodes[1][0].append(.{ .MOV = .{ .src = .{ .Register = .UP }, .dst = .RIGHT } });
+
+    tis100.nodes[1][2].append(.{ .MOV = .{ .src = .{ .Register = .RIGHT }, .dst = .ACC } });
+    tis100.nodes[1][2].append(.NEG);
+    tis100.nodes[1][2].append(.{ .MOV = .{ .src = .{ .Register = .ACC }, .dst = .DOWN } });
+
+    tis100.nodes[2][0].append(.{ .MOV = .{ .src = .{ .Register = .UP }, .dst = .ACC } });
+    tis100.nodes[2][0].append(.{ .SUB = .{ .src = .{ .Register = .LEFT } } });
+    tis100.nodes[2][0].append(.{ .MOV = .{ .src = .{ .Register = .ACC }, .dst = .DOWN } });
+
+    tis100.nodes[2][1].append(.{ .MOV = .{ .src = .{ .Register = .UP }, .dst = .DOWN } });
+
+    tis100.nodes[2][2].append(.{ .MOV = .{ .src = .{ .Register = .UP }, .dst = .ACC } });
+    tis100.nodes[2][2].append(.{ .MOV = .{ .src = .{ .Register = .ACC }, .dst = .LEFT } });
+    tis100.nodes[2][2].append(.{ .MOV = .{ .src = .{ .Register = .ACC }, .dst = .DOWN } });
+
+    for (0..3 * DifferentialConverter.Input0Data.len + 4) |_| {
         tis100.tick();
     }
 }
