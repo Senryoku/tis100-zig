@@ -2,9 +2,9 @@ const std = @import("std");
 const Cursor = @import("cursor.zig");
 const tis = @import("tis.zig");
 
-const SequenceCounter = struct {
+const SignalEdgeDetector = struct {
     const Input0Data = [_]i16{};
-    const Input1Data = [_]i16{ 35, 0, 62, 51, 81, 54, 12, 0, 51, 63, 50, 67, 48, 0, 49, 23, 26, 0, 33, 79, 76, 0, 0, 94, 0, 79, 0, 98, 15, 0, 53, 35, 45, 12, 79, 0, 19, 71, 0 };
+    const Input1Data = [_]i16{ 0, 23, 30, 27, 24, 28, 37, 33, 24, 13, 9, 13, 9, 13, 12, 14, 23, 21, 23, 19, 9, 18, 8, -3, 6, 3, 14, 25, 15, 14, 3, 1, 2, -1, 1, -10, -7, -7, -11 };
     const Input2Data = [_]i16{};
     const Input3Data = [_]i16{};
 
@@ -63,12 +63,10 @@ const SequenceCounter = struct {
     }
 
     pub fn expected(output: u2, idx: usize) ?i16 {
-        const in1 = [_]i16{ 35, 260, 279, 98, 188, 0, 94, 79, 113, 224, 90 };
-        const in2 = [_]i16{ 1, 5, 5, 3, 3, 0, 1, 1, 2, 5, 2 };
         switch (output) {
             0 => return null,
-            1 => return if (idx < in1.len) in1[idx] else null,
-            2 => return if (idx < in2.len) in2[idx] else null,
+            1 => return null,
+            2 => return if (idx == 0) 0 else if (idx < Input1Data.len) (if (@abs(Input1Data[idx] - Input1Data[idx - 1]) >= 10) 1 else 0) else null,
             3 => return null,
         }
     }
@@ -77,7 +75,7 @@ const SequenceCounter = struct {
 pub fn main() !void {
     var tis100: tis.TIS100 = .{};
 
-    const Puzzle = SequenceCounter;
+    const Puzzle = SignalEdgeDetector;
 
     tis100.inputs[0] = &Puzzle.input_0;
     tis100.inputs[1] = &Puzzle.input_1;
@@ -90,48 +88,48 @@ pub fn main() !void {
 
     try tis100.nodes[1][0].set(
         \\ MOV UP ACC
-        \\ MOV ACC RIGHT
         \\ MOV ACC DOWN
+        \\ MOV ACC RIGHT 
     );
 
     try tis100.nodes[1][1].set(
-        \\ MOV UP ACC
-        \\ JNZ 5
-        \\ MOV 0 DOWN
-        \\ MOV 1 DOWN
-        \\ JMP 0
-        \\ MOV ACC DOWN
-        \\ MOV 3 DOWN
-    );
-
-    try tis100.nodes[1][2].set(
-        \\ ADD UP 
-        \\ JRO UP       
-        \\ MOV ACC DOWN 
-        \\ MOV 0 ACC 
-        \\ NOP 
+        \\ MOV 0 RIGHT
+        \\ MOV UP NIL
+        \\ MOV UP RIGHT
+        \\ JMP 2
     );
 
     try tis100.nodes[2][0].set(
-        \\ MOV LEFT ACC
-        \\ JNZ 5
         \\ MOV 0 DOWN
-        \\ MOV 1 DOWN
-        \\ JMP 0
-        \\ MOV 1 DOWN
-        \\ MOV 3 DOWN
+        \\ MOV LEFT DOWN
+        \\ JMP 1
     );
 
     try tis100.nodes[2][1].set(
-        \\ ADD UP
-        \\ JRO UP
-        \\ MOV ACC DOWN
-        \\ MOV 0 ACC
-        \\ NOP
+        \\ MOV UP ACC
+        \\ SUB LEFT
+        \\ MOV ACC RIGHT
     );
 
     try tis100.nodes[2][2].set(
-        \\ MOV UP DOWN
+        \\ MOV RIGHT ACC
+        \\ JGZ 4
+        \\ MOV 1 DOWN
+        \\ JMP 0
+        \\ MOV 0 DOWN
+    );
+
+    try tis100.nodes[3][1].set(
+        \\ MOV LEFT ACC
+        \\ JGZ 3
+        \\ NEG
+        \\ MOV ACC DOWN
+    );
+
+    try tis100.nodes[3][2].set(
+        \\ MOV 10 ACC
+        \\ SUB UP
+        \\ MOV ACC LEFT
     );
 
     const stdin = std.io.getStdIn().reader();
@@ -141,8 +139,8 @@ pub fn main() !void {
 
     try Cursor.clear();
 
-    const no_interaction = true;
-    const render = !no_interaction or true;
+    const interactive = true;
+    const render = interactive or true;
 
     while (true) {
         const complete = Puzzle.expected(0, Puzzle.output_indices[0]) == null and Puzzle.expected(1, Puzzle.output_indices[1]) == null and Puzzle.expected(2, Puzzle.output_indices[2]) == null and Puzzle.expected(3, Puzzle.output_indices[3]) == null;
@@ -212,7 +210,7 @@ pub fn main() !void {
             break;
         }
 
-        if (!no_interaction) {
+        if (interactive) {
             const cin = try stdin.readUntilDelimiterOrEof(buf[0..], '\n');
             if (cin) |user_input| {
                 if (std.mem.eql(u8, user_input, "q") or std.mem.eql(u8, user_input, "q\r")) break;

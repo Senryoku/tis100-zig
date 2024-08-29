@@ -90,7 +90,17 @@ pub const Instruction = union(Opcode) {
     }
 };
 
-pub const Node = struct {
+const NodeType = enum {
+    ExecutionNode,
+    StackMemoryNode,
+};
+
+pub const Node = union(NodeType) {
+    ExecutionNode: ExecutionNode,
+    StackMemoryNode: StackMemoryNode,
+};
+
+pub const ExecutionNode = struct {
     acc: i16 = 0,
     bak: i16 = 0,
 
@@ -221,8 +231,26 @@ pub const Node = struct {
     }
 };
 
+pub const StackMemoryNode = struct {
+    stack: [15]i16 = .{0} ** 15,
+    count: u4 = 0,
+
+    pub fn read_port(self: *@This()) ?i16 {
+        if (self.count > 0) {
+            self.count -= 1;
+            return self.stack[self.count];
+        }
+        return null;
+    }
+
+    pub fn push(self: *@This(), val: i16) void {
+        self.stack[self.count] = val;
+        self.count += 1;
+    }
+};
+
 pub const TIS100 = struct {
-    nodes: [4][3]Node = .{.{.{}} ** 3} ** 4,
+    nodes: [4][3]ExecutionNode = .{.{.{}} ** 3} ** 4,
 
     inputs: [4]?*const fn () ?i16 = .{null} ** 4,
     outputs: [4]?*const fn (i16) void = .{null} ** 4,
