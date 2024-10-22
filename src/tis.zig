@@ -415,7 +415,7 @@ pub fn parse(txt: []const u8) !struct { instructions: [15]Instruction, instr_cou
     var lines = std.mem.splitSequence(u8, txt, "\n");
 
     var instructions: [15]Instruction = .{.NOP} ** 15;
-    var idx: usize = 0;
+    var idx: u4 = 0;
 
     while (lines.next()) |line| {
         var l = trim_start(line);
@@ -468,9 +468,10 @@ pub fn parse(txt: []const u8) !struct { instructions: [15]Instruction, instr_cou
         } else {
             return error.InvalidInstruction;
         }
+        if (idx >= 15) break;
     }
 
-    return .{ .instructions = instructions, .instr_count = @truncate(idx) };
+    return .{ .instructions = instructions, .instr_count = idx };
 }
 
 ///////////////////////////////////////////////////////////////////////////////
