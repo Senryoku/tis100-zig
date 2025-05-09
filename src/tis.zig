@@ -104,14 +104,14 @@ pub const ExecutionNode = struct {
     acc: i16 = 0,
     bak: i16 = 0,
 
-    instructions: [15]Instruction = .{.{ .NOP = .{} }} ** 15,
+    instructions: [15]Instruction = @splat(.NOP),
     instr_count: u4 = 0,
     pc: u4 = 0,
 
-    ports: [4]?i16 = .{ null, null, null, null },
+    ports: [4]?i16 = @splat(null),
     last_port: ?Register = null, // Last used port
 
-    next_ports: [4]?i16 = .{ null, null, null, null },
+    next_ports: [4]?i16 = @splat(null),
 
     rendered: bool = false,
 
@@ -250,7 +250,7 @@ pub const StackMemoryNode = struct {
 };
 
 pub const TIS100 = struct {
-    nodes: [4][3]ExecutionNode = .{.{.{}} ** 3} ** 4,
+    nodes: [4][3]ExecutionNode = @splat(@splat(.{})),
 
     inputs: [4]?*const fn () ?i16 = .{null} ** 4,
     outputs: [4]?*const fn (i16) void = .{null} ** 4,
