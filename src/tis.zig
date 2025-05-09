@@ -16,34 +16,11 @@ pub const Register = enum {
     }
 };
 
-pub const Opcode = enum {
-    NOP,
-    MOV,
-    SWP,
-    SAV,
-    ADD,
-    SUB,
-    NEG,
-    JMP,
-    JEZ,
-    JNZ,
-    JGZ,
-    JLZ,
-    JRO, // Constant JRO will be converted to absolute JMP
-};
-
-pub const OperandType = enum { Register, Immediate };
-
-pub const Operand = union(OperandType) {
+pub const Operand = union(enum) {
     Register: Register,
     Immediate: i16,
 
-    pub fn format(
-        instr: @This(),
-        comptime _: []const u8,
-        _: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
+    pub fn format(instr: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         try switch (instr) {
             .Register => |reg| writer.print("{s}", .{@tagName(reg)}),
             .Immediate => |imm| writer.print("{d}", .{imm}),
@@ -51,7 +28,7 @@ pub const Operand = union(OperandType) {
     }
 };
 
-pub const Instruction = union(Opcode) {
+pub const Instruction = union(enum) {
     NOP: struct {},
     MOV: struct { src: Operand, dst: Register },
     SWP: struct {},
@@ -64,14 +41,9 @@ pub const Instruction = union(Opcode) {
     JNZ: struct { dst: u4 },
     JGZ: struct { dst: u4 },
     JLZ: struct { dst: u4 },
-    JRO: struct { src: Operand },
+    JRO: struct { src: Operand }, // Constant JRO will be converted to absolute JMP
 
-    pub fn format(
-        instr: @This(),
-        comptime _: []const u8,
-        _: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
+    pub fn format(instr: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         try switch (instr) {
             .NOP => writer.writeAll("NOP"),
             .MOV => |mov| writer.print("MOV {any} {s}", .{ mov.src, @tagName(mov.dst) }),
@@ -138,16 +110,16 @@ pub const ExecutionNode = struct {
     }
 
     pub fn up(self: *@This()) ?i16 {
-        return self.read_port(Register.UP);
+        return self.read_port(.UP);
     }
     pub fn down(self: *@This()) ?i16 {
-        return self.read_port(Register.DOWN);
+        return self.read_port(.DOWN);
     }
     pub fn left(self: *@This()) ?i16 {
-        return self.read_port(Register.LEFT);
+        return self.read_port(.LEFT);
     }
     pub fn right(self: *@This()) ?i16 {
-        return self.read_port(Register.RIGHT);
+        return self.read_port(.RIGHT);
     }
 
     pub fn print(self: *const @This()) !void {
@@ -232,7 +204,7 @@ pub const ExecutionNode = struct {
 };
 
 pub const StackMemoryNode = struct {
-    stack: [15]i16 = .{0} ** 15,
+    stack: [15]i16 = @splat(0),
     count: u4 = 0,
 
     pub fn read_port(self: *@This()) ?i16 {
@@ -252,8 +224,8 @@ pub const StackMemoryNode = struct {
 pub const TIS100 = struct {
     nodes: [4][3]ExecutionNode = @splat(@splat(.{})),
 
-    inputs: [4]?*const fn () ?i16 = .{null} ** 4,
-    outputs: [4]?*const fn (i16) void = .{null} ** 4,
+    inputs: [4]?*const fn () ?i16 = @splat(null),
+    outputs: [4]?*const fn (i16) void = @splat(null),
 
     pub fn tick(self: *@This()) void {
         for (0..4) |i| {
@@ -321,9 +293,7 @@ pub const TIS100 = struct {
                                 node.pc = @intCast(@as(i16, @intCast(node.pc)) +% val);
                             }
                         },
-                        .NOP => {
-                            node.pc += 1;
-                        },
+                        .NOP => node.pc += 1,
                     }
                     node.pc %= node.instr_count;
                 }
@@ -395,14 +365,14 @@ fn next_operand(line: []const u8) []const u8 {
 }
 
 fn parse_register(op: []const u8) !?Register {
+    if (std.mem.eql(u8, op, "UP")) return .UP;
     if (std.mem.eql(u8, op, "NIL")) return .NIL;
     if (std.mem.eql(u8, op, "ACC")) return .ACC;
-    if (std.mem.eql(u8, op, "UP")) return .UP;
+    if (std.mem.eql(u8, op, "ANY")) return .ANY;
     if (std.mem.eql(u8, op, "DOWN")) return .DOWN;
     if (std.mem.eql(u8, op, "LEFT")) return .LEFT;
-    if (std.mem.eql(u8, op, "RIGHT")) return .RIGHT;
     if (std.mem.eql(u8, op, "LAST")) return .LAST;
-    if (std.mem.eql(u8, op, "ANY")) return .ANY;
+    if (std.mem.eql(u8, op, "RIGHT")) return .RIGHT;
     return null;
 }
 
@@ -414,7 +384,7 @@ fn parse_operand(op: []const u8) !Operand {
 pub fn parse(txt: []const u8) !struct { instructions: [15]Instruction, instr_count: u4 } {
     var lines = std.mem.splitSequence(u8, txt, "\n");
 
-    var instructions: [15]Instruction = .{.NOP} ** 15;
+    var instructions: [15]Instruction = @splat(.NOP);
     var idx: u4 = 0;
 
     while (lines.next()) |line| {
@@ -428,46 +398,34 @@ pub fn parse(txt: []const u8) !struct { instructions: [15]Instruction, instr_cou
             const dst_reg = try parse_register(dst);
             if (dst_reg == null) return error.InvalidDestinationRegister;
             instructions[idx] = .{ .MOV = .{ .src = try parse_operand(src), .dst = dst_reg.? } };
-            idx += 1;
         } else if (std.mem.eql(u8, op, "SWP")) {
             instructions[idx] = .SWP;
-            idx += 1;
         } else if (std.mem.eql(u8, op, "SAV")) {
             instructions[idx] = .SAV;
-            idx += 1;
         } else if (std.mem.eql(u8, op, "NEG")) {
             instructions[idx] = .NEG;
-            idx += 1;
         } else if (std.mem.eql(u8, op, "ADD")) {
             instructions[idx] = .{ .ADD = .{ .src = try parse_operand(next_operand(l[3..])) } };
-            idx += 1;
         } else if (std.mem.eql(u8, op, "SUB")) {
             instructions[idx] = .{ .SUB = .{ .src = try parse_operand(next_operand(l[3..])) } };
-            idx += 1;
         } else if (std.mem.eql(u8, op, "JMP")) {
             instructions[idx] = .{ .JMP = .{ .dst = try std.fmt.parseInt(u4, next_operand(l[3..]), 10) } };
-            idx += 1;
         } else if (std.mem.eql(u8, op, "JEZ")) {
             instructions[idx] = .{ .JEZ = .{ .dst = try std.fmt.parseInt(u4, next_operand(l[3..]), 10) } };
-            idx += 1;
         } else if (std.mem.eql(u8, op, "JNZ")) {
             instructions[idx] = .{ .JNZ = .{ .dst = try std.fmt.parseInt(u4, next_operand(l[3..]), 10) } };
-            idx += 1;
         } else if (std.mem.eql(u8, op, "JGZ")) {
             instructions[idx] = .{ .JGZ = .{ .dst = try std.fmt.parseInt(u4, next_operand(l[3..]), 10) } };
-            idx += 1;
         } else if (std.mem.eql(u8, op, "JLZ")) {
             instructions[idx] = .{ .JLZ = .{ .dst = try std.fmt.parseInt(u4, next_operand(l[3..]), 10) } };
-            idx += 1;
         } else if (std.mem.eql(u8, op, "JRO")) {
             instructions[idx] = .{ .JRO = .{ .src = try parse_operand(next_operand(l[3..])) } };
-            idx += 1;
         } else if (std.mem.eql(u8, op, "NOP")) {
             instructions[idx] = .NOP;
-            idx += 1;
         } else {
             return error.InvalidInstruction;
         }
+        idx += 1;
         if (idx >= 15) break;
     }
 
@@ -656,8 +614,8 @@ const SignalComparator = struct {
     const Input2Data = [_]i16{};
     const Input3Data = [_]i16{};
 
-    var input_indices: [4]usize = .{0} ** 4;
-    var output_indices: [4]usize = .{0} ** 4;
+    var input_indices: [4]usize = @splat(0);
+    var output_indices: [4]usize = @splat(0);
 
     inline fn get_input(idx: u2) []const i16 {
         return switch (idx) {
@@ -776,10 +734,10 @@ const SequenceGenerator = struct {
     const Input2Data = [_]i16{ 71, 29, 90, 67, 79, 84, 78, 27, 60, 45, 67, 42, 64 };
     const Input3Data = [_]i16{};
 
-    var input_indices: [4]usize = .{0} ** 4;
-    var output_indices: [4]usize = .{0} ** 4;
+    var input_indices: [4]usize = @splat(0);
+    var output_indices: [4]usize = @splat(0);
 
-    var OutputData: [4][256]i16 = .{.{0} ** 256} ** 4;
+    var OutputData: [4][256]i16 = @splat(@splat(0));
 
     inline fn get_input(idx: u2) []const i16 {
         return switch (idx) {
@@ -905,10 +863,10 @@ const SequenceCounter = struct {
     const Input2Data = [_]i16{};
     const Input3Data = [_]i16{};
 
-    var input_indices: [4]usize = .{0} ** 4;
-    var output_indices: [4]usize = .{0} ** 4;
+    var input_indices: [4]usize = @splat(0);
+    var output_indices: [4]usize = @splat(0);
 
-    var OutputData: [4][256]i16 = .{.{0} ** 256} ** 4;
+    var OutputData: [4][256]i16 = @splat(@splat(0));
 
     inline fn get_input(idx: u2) []const i16 {
         return switch (idx) {

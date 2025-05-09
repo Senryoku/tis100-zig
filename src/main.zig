@@ -8,10 +8,10 @@ const SignalEdgeDetector = struct {
     const Input2Data = [_]i16{};
     const Input3Data = [_]i16{};
 
-    var input_indices: [4]usize = .{0} ** 4;
-    var output_indices: [4]usize = .{0} ** 4;
+    var input_indices: [4]usize = @splat(0);
+    var output_indices: [4]usize = @splat(0);
 
-    var OutputData: [4][256]i16 = .{.{0} ** 256} ** 4;
+    var OutputData: [4][256]i16 = @splat(@splat(0));
 
     inline fn get_input(idx: u2) []const i16 {
         return switch (idx) {
